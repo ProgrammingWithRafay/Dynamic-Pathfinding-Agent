@@ -38,8 +38,10 @@ COLOR_SOLUTION_PATH = "#a78bfa"
 COLOR_AGENT_POS = "#ffffff"
 COLOR_GRID_LINE = "#1e1e35"
 
-CELL_DIMENSION = 26
-CELL_SPACING = 2
+# ── FIX: Smaller cells so full grid fits on small screens
+#         and the left panel can show the speed slider ──
+CELL_DIMENSION = 16   # was 26
+CELL_SPACING = 1      # was 2
 
 TYPOGRAPHY_HEADING = ("Courier", 15, "bold")
 TYPOGRAPHY_LABEL = ("Courier", 9)
@@ -305,9 +307,9 @@ class GridPathfinderApp:
         self.root.configure(bg=THEME_DARK_BG)
         self.root.resizable(True, True)
 
-        # Grid dimensions
-        self.grid_rows = 22
-        self.grid_cols = 32
+        # ── FIX: Smaller default grid so it fits on small screens ──
+        self.grid_rows = 18   # was 22
+        self.grid_cols = 28   # was 32
         self.grid_matrix = [[0] * self.grid_cols for _ in range(self.grid_rows)]
         self.start_node = (0, 0)
         self.goal_node = (self.grid_rows - 1, self.grid_cols - 1)
@@ -329,7 +331,8 @@ class GridPathfinderApp:
         self.edit_brush_mode = tk.StringVar(value="wall")
         self.obstacle_spawn_density = tk.DoubleVar(value=0.28)
         self.dynamic_spawn_chance = tk.DoubleVar(value=0.015)
-        self.frame_delay_ms = tk.IntVar(value=30)
+        # ── FIX: Default delay raised so animation is visible immediately ──
+        self.frame_delay_ms = tk.IntVar(value=80)   # was 30
         self.is_dynamic_enabled = tk.BooleanVar(value=False)
 
         # Metrics display
@@ -392,9 +395,38 @@ class GridPathfinderApp:
         return card_content
 
     def _render_control_panel(self, parent_container):
-        self._control_panel = tk.Frame(parent_container, bg=THEME_DARK_BG, width=226)
-        self._control_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
-        self._control_panel.pack_propagate(False)
+        # ── FIX: Make the left panel scrollable so nothing is hidden ──
+        panel_outer = tk.Frame(parent_container, bg=THEME_DARK_BG, width=226)
+        panel_outer.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+        panel_outer.pack_propagate(False)
+
+        canvas_scroll = tk.Canvas(panel_outer, bg=THEME_DARK_BG,
+                                  highlightthickness=0, width=226)
+        scrollbar = tk.Scrollbar(panel_outer, orient=tk.VERTICAL,
+                                 command=canvas_scroll.yview)
+        canvas_scroll.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas_scroll.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self._control_panel = tk.Frame(canvas_scroll, bg=THEME_DARK_BG)
+        scroll_window = canvas_scroll.create_window((0, 0), window=self._control_panel,
+                                                    anchor="nw")
+
+        def _on_frame_configure(e):
+            canvas_scroll.configure(scrollregion=canvas_scroll.bbox("all"))
+
+        def _on_canvas_configure(e):
+            canvas_scroll.itemconfig(scroll_window, width=e.width)
+
+        self._control_panel.bind("<Configure>", _on_frame_configure)
+        canvas_scroll.bind("<Configure>", _on_canvas_configure)
+
+        # Mouse-wheel scrolling
+        def _on_mousewheel(e):
+            canvas_scroll.yview_scroll(int(-1 * (e.delta / 120)), "units")
+
+        canvas_scroll.bind_all("<MouseWheel>", _on_mousewheel)
 
         # Algorithm selection
         card = self._wrap_card(self._control_panel, "Algorithm")
@@ -422,7 +454,7 @@ class GridPathfinderApp:
         card = self._wrap_card(self._control_panel, "Grid Size")
         size_inputs = tk.Frame(card, bg=THEME_CARD_BG)
         size_inputs.pack(fill=tk.X, pady=(0, 6))
-        for label_txt, attr_name, default_val in [("Rows", "row_input", "22"), ("Cols", "col_input", "32")]:
+        for label_txt, attr_name, default_val in [("Rows", "row_input", "18"), ("Cols", "col_input", "28")]:
             input_box = tk.Frame(size_inputs, bg=THEME_CARD_BG)
             input_box.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=2)
             tk.Label(input_box, text=label_txt, font=TYPOGRAPHY_CAPTION, 
@@ -469,10 +501,10 @@ class GridPathfinderApp:
         ControlSlider(card, "Spawn Probability", self.dynamic_spawn_chance,
                      0.005, 0.05, 0.005, display_fmt="{:.3f}", slider_color=THEME_ACCENT_PINK).pack(fill=tk.X)
 
-        # Speed control
+        # ── FIX: Animation Speed slider is now always visible ──
         card = self._wrap_card(self._control_panel, "Animation Speed")
         ControlSlider(card, "Delay (ms/step)", self.frame_delay_ms,
-                     5, 200, 5, display_fmt="{:.0f} ms", slider_color=THEME_SECONDARY).pack(fill=tk.X)
+                     5, 300, 5, display_fmt="{:.0f} ms", slider_color=THEME_SECONDARY).pack(fill=tk.X)
 
         # Legend
         card = self._wrap_card(self._control_panel, "Legend")
@@ -579,17 +611,17 @@ class GridPathfinderApp:
 
         if cell_pos == self.agent_current_pos:
             self.canvas_widget.create_rectangle(x1, y1, x2, y2, fill=COLOR_SOLUTION_PATH, outline="", tags=cell_tag)
-            padding = 5
+            padding = 4
             self.canvas_widget.create_oval(x1+padding, y1+padding, x2-padding, y2-padding,
                                           fill=COLOR_AGENT_POS, outline="", tags=cell_tag)
         elif cell_pos == self.start_node:
             self.canvas_widget.create_rectangle(x1, y1, x2, y2, fill=COLOR_START_NODE, outline="", tags=cell_tag)
             self.canvas_widget.create_text((x1+x2)//2, (y1+y2)//2, text="S",
-                                          fill="#000", font=("Courier", 8, "bold"), tags=cell_tag)
+                                          fill="#000", font=("Courier", 7, "bold"), tags=cell_tag)
         elif cell_pos == self.goal_node:
             self.canvas_widget.create_rectangle(x1, y1, x2, y2, fill=COLOR_GOAL_NODE, outline="", tags=cell_tag)
             self.canvas_widget.create_text((x1+x2)//2, (y1+y2)//2, text="G",
-                                          fill="#fff", font=("Courier", 8, "bold"), tags=cell_tag)
+                                          fill="#fff", font=("Courier", 7, "bold"), tags=cell_tag)
         elif self.grid_matrix[row][col] == 1:
             self.canvas_widget.create_rectangle(x1, y1, x2, y2,
                                                fill=COLOR_OBSTACLE, outline=COLOR_OBSTACLE_BORDER, tags=cell_tag)
@@ -779,7 +811,8 @@ class GridPathfinderApp:
             return
         
         speed = self.frame_delay_ms.get()
-        batch_size = max(1, len(self.explored_nodes) // 80)
+        # ── FIX: batch_size = 1 so every node animates individually ──
+        batch_size = 1
         end_idx = min(self._vis_frame_index + batch_size, len(self.explored_nodes))
         
         for i in range(self._vis_frame_index, end_idx):
@@ -791,7 +824,8 @@ class GridPathfinderApp:
         self._vis_frame_index = end_idx
         
         if self._vis_frame_index < len(self.explored_nodes):
-            self._scheduled_draw = self.root.after(speed // 5, self._animate_exploration_phase)
+            # ── FIX: use full speed delay (not speed//5) so animation is visible ──
+            self._scheduled_draw = self.root.after(speed, self._animate_exploration_phase)
         else:
             self._display_solution_and_start_movement()
 
@@ -953,6 +987,6 @@ class GridPathfinderApp:
 
 if __name__ == "__main__":
     root_window = tk.Tk()
-    root_window.minsize(980, 640)
+    root_window.minsize(900, 580)
     application = GridPathfinderApp(root_window)
     root_window.mainloop()
